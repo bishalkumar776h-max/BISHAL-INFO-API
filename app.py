@@ -52,7 +52,7 @@ async def json_to_proto(json_data: str, proto_message: Message) -> bytes:
 def get_account_credentials(region: str) -> str:
     r = region.upper()
     if r == "IND":
-        return "uid=4691143834&password=0ED0F210FFEB5B8E95DAF818446E31168DE49587425DE5D26656F8DDC2E30AD4"
+        return "uid=5063774786&password=7990F522418F3A454427C92FE93E3EE02647C29411BBF4302BE07BACC106B51C"
     elif r in {"BR", "US", "SAC", "NA"}:
         return "uid=4558407324&password=SEXTY_MODS_IND_SAZJALSQB"
     else:
@@ -133,27 +133,6 @@ def cached_endpoint(ttl=300):
         return wrapper
     return decorator
 
-# === Core Function for fetching player info ===
-
-async def fetch_player_info(uid: str):
-    """Common function to fetch player info from all regions"""
-    # Check cached region for UID
-    if uid in uid_region_cache:
-        try:
-            return await GetAccountInformation(uid, "7", uid_region_cache[uid], "/GetPlayerPersonalShow")
-        except:
-            pass  # fallback to testing all regions
-
-    for region in SUPPORTED_REGIONS:
-        try:
-            data = await GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow")
-            uid_region_cache[uid] = region
-            return data
-        except:
-            continue
-    
-    return None
-
 # === Flask Routes ===
 
 @app.route('/player-info')
@@ -163,46 +142,25 @@ def get_account_info():
     if not uid:
         return jsonify({"error": "Please provide UID."}), 400
 
-    return_data = asyncio.run(fetch_player_info(uid))
-    
-    if return_data is None:
-        return jsonify({"error": "UID not found in any region."}), 404
-    
-    formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
-    return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
+    # Check cached region for UID
+    if uid in uid_region_cache:
+        try:
+            return_data = asyncio.run(GetAccountInformation(uid, "7", uid_region_cache[uid], "/GetPlayerPersonalShow"))
+            formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
+            return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
+        except:
+            pass  # fallback to testing all regions
 
+    for region in SUPPORTED_REGIONS:
+        try:
+            return_data = asyncio.run(GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow"))
+            uid_region_cache[uid] = region
+            formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
+            return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
+        except:
+            continue
 
-@app.route('/Bmw')
-@cached_endpoint()
-def bmw_endpoint():
-    """
-    Custom BMW endpoint - fetches player info by UID
-    Usage: /Bmw?uid=11111111
-    """
-    uid = request.args.get('uid')
-    if not uid:
-        return jsonify({
-            "status": "error",
-            "message": "Please provide UID.",
-            "usage": "/Bmw?uid=YOUR_UID"
-        }), 400
-
-    return_data = asyncio.run(fetch_player_info(uid))
-    
-    if return_data is None:
-        return jsonify({
-            "status": "error",
-            "message": "UID not found in any region.",
-            "uid": uid
-        }), 404
-    
-    # You can customize the response format here
-    return jsonify({
-        "status": "success",
-        "uid": uid,
-        "data": return_data
-    }), 200
-
+    return jsonify({"error": "UID not found in any region."}), 404
 
 @app.route('/refresh', methods=['GET','POST'])
 def refresh_tokens_endpoint():
